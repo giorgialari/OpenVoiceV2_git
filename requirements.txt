@@ -19,7 +19,8 @@ cached_path==1.6.2
 python-magic==0.4.27
 libmagic==1.0
 fastapi==0.110.1
-torch==2.2.2
+torch>=2.0.1
 soundfile==0.12.1
 starlette==0.37.2
 pydantic==2.6.4
+requests==2.31.0
