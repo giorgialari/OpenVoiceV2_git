@@ -3,6 +3,7 @@ services:
     name: OpenVoice-Server
     runtime: python
     env: python
-    buildCommand: |
+    buildCommand:
       ./render-build.sh
-    startCommand: uvicorn openvoice.openvoice_server:app --host 0.0.0.0 --port 8000
+    startCommand: uvicorn openvoice.openvoice_server:app --host 0.0.0.0 --port $PORT
+
