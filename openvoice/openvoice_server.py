@@ -1,13 +1,14 @@
 import os
-import time
 import torch
 import logging
+import tempfile
+import psutil
+from functools import lru_cache
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import StreamingResponse
 from typing import Optional
 from melo.api import TTS
-import tempfile
 
 logging.basicConfig(level=logging.INFO)
 
@@ -16,18 +17,16 @@ app = FastAPI()
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
+    allow_origins=["*"],  
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],  
+    allow_headers=["*"],  
 )
 
-# Device setup
-device = "cuda:0" if torch.cuda.is_available() else "cpu"
-output_dir = 'outputs'
-os.makedirs(output_dir, exist_ok=True)
+# Forza sempre la CPU per ridurre il consumo di memoria
+device = "cpu"
 
-# Available base speakers
+# Mappa accenti e modelli
 base_speakers = ['en-au', 'en-br', 'en-default', 'en-india', 'en-newest', 'en-us', 'es', 'fr', 'jp', 'kr', 'zh']
 key_map = {
     'en-newest': ('EN-Newest', 'EN_NEWEST'),
@@ -43,61 +42,62 @@ key_map = {
     'zh': ('ZH', 'ZH')
 }
 
-logging.info('Loading TTS models...')
-model = {}
+# Funzione per monitorare il consumo di RAM
+def print_memory_usage(tag=""):
+    process = psutil.Process()
+    mem_info = process.memory_info()
+    logging.info(f"[{tag}] RAM usata: {mem_info.rss / 1024 / 1024:.2f} MB")
 
-if device == "cpu":
-    base_speakers = ['en-newest']
+# Cache per mantenere solo 2 modelli in memoria contemporaneamente
+@lru_cache(maxsize=2)
+def get_tts_model(accent):
+    logging.info(f"Caricamento modello {accent}...")
+    model = TTS(language=key_map[accent][1], device=device)
+    logging.info(f"{accent} caricato.")
+    return model
 
-for accent in base_speakers:
-    logging.info(f'Loading {accent}...')
-    model[accent] = TTS(language=key_map[accent][1], device=device)
-    logging.info('...done.')
-
-logging.info('Loaded TTS models.')
-
+# Funzione per leggere e rimuovere il file dopo l'uso
 def iterfile(file_path: str, chunk_size: int = 8192):
-    """
-    Legge il file in blocchi e, una volta terminata la lettura, elimina il file.
-    """
     try:
         with open(file_path, "rb") as file:
-            while True:
-                chunk = file.read(chunk_size)
-                if not chunk:
-                    break
+            while chunk := file.read(chunk_size):
                 yield chunk
     finally:
         try:
             os.remove(file_path)
         except Exception as e:
-            logging.error(f"Errore durante l'eliminazione del file {file_path}: {e}")
+            logging.error(f"Errore eliminando il file {file_path}: {e}")
 
 @app.get("/base_tts/")
 async def base_tts(text: str, accent: Optional[str] = 'en-newest', speed: Optional[float] = 1.0):
-    global model
-
-    if accent not in model:
-        logging.info(f'Loading {accent}...')
-        model[accent] = TTS(language=key_map[accent][1], device=device)
-        logging.info('...done.')
-
     try:
-        # Crea un file temporaneo che non viene eliminato automaticamente
+        print_memory_usage("PRIMA della generazione audio")
+
+        # Carica il modello (massimo 2 modelli in RAM contemporaneamente)
+        model = get_tts_model(accent)
+
+        # Crea un file temporaneo
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
             tmp_filename = tmp_file.name
 
-        # Genera l'audio e salvalo nel file temporaneo
-        model[accent].tts_to_file(
+        # Genera l'audio e salva nel file
+        model.tts_to_file(
             text, 
-            model[accent].hps.data.spk2id[key_map[accent][0]], 
+            model.hps.data.spk2id[key_map[accent][0]], 
             tmp_filename, 
             speed=speed
         )
 
-        # Restituisci la StreamingResponse usando il generatore "iterfile"
+        print_memory_usage("DOPO la generazione audio")
+
+        # Pulisce la memoria GPU (se Torch la sta usando)
+        torch.cuda.empty_cache()
+
+        # Restituisce il file audio
         return StreamingResponse(iterfile(tmp_filename), media_type="audio/wav")
+
     except Exception as e:
+        logging.error(f"Errore in base_tts: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
