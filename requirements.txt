@@ -24,3 +24,4 @@ soundfile==0.12.1
 starlette==0.37.2
 pydantic==2.6.4
 requests==2.31.0
+psutil
