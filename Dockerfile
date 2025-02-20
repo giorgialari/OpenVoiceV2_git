@@ -1,24 +1,63 @@
-# Usa Python come base (Railway supporta Python 3.9+)
-FROM python:3.9
+# Use an official Python runtime as a parent image
+FROM continuumio/miniconda3:24.1.2-0
 
-# Imposta la directory di lavoro
+# Set the working directory in the container to /app
 WORKDIR /app
 
-# Copia tutto il codice nel container
-COPY . /app/
+# Add current directory files to /app in the container
+ADD . /app
 
-# Assegna i permessi di esecuzione allo script
-RUN chmod +x railway-build.sh
+# Clone the git repo
+RUN git clone https://github.com/giorgialari/OpenVoiceV2_git.git
 
-# Installa le dipendenze di sistema
-RUN apt-get update && apt-get install -y ffmpeg libmagic-dev unzip wget
+# Set the working directory to OpenVoice
+WORKDIR /app/OpenVoiceV2_git
 
-# Esegui lo script di installazione
-RUN ./railway-build.sh
+# Create a new conda environment with python 3.9 and activate it
+RUN conda create -n openvoice python=3.9
+RUN echo "source activate openvoice" > ~/.bashrc
+ENV PATH /opt/conda/envs/openvoice/bin:$PATH
+# force python to use unbuffered mode for logging
+ENV PYTHONUNBUFFERED=1
 
-# Esponi la porta per l'API
-ENV PORT=8000
-EXPOSE $PORT
+# Install the OpenVoice package and uvicorn for FastAPI
+# Install MeloTTS
+RUN git clone https://github.com/myshell-ai/MeloTTS.git && \
+  cd MeloTTS && \
+  pip install -e . && \
+  python -m unidic download && \
+  cd ..
 
-# Comando per avviare FastAPI con Uvicorn
-CMD ["uvicorn", "openvoice.openvoice_server:app", "--host", "0.0.0.0", "--port", "8000"]
+RUN pip install -e . uvicorn ffmpeg
+RUN pip install -r requirements.txt
+
+# Download and extract the checkpoint file
+RUN apt-get update && apt-get install -y unzip wget
+RUN wget https://myshell-public-repo-hosting.s3.amazonaws.com/openvoice/checkpoints_v2_0417.zip
+RUN unzip checkpoints_v2_0417.zip -d ./openvoice
+RUN rm checkpoints_v2_0417.zip
+RUN mv resources openvoice/resources
+
+# Make port 8000 available to the world outside this container
+EXPOSE 8000
+EXPOSE 7860
+
+RUN cd /app/OpenVoice_server/openvoice
+WORKDIR /app/OpenVoice_server/openvoice
+
+RUN conda install ffmpeg
+RUN conda install --yes libmagic
+
+# copy the startup script into the container
+COPY start.sh /app/OpenVoice_server/openvoice/start.sh
+
+# Provide permissions to execute the script
+RUN chmod +x /app/OpenVoice_server/openvoice/start.sh
+
+# Start the server once to initiate the first time setup that downloads some models.
+COPY start_and_stop_server.sh /app/OpenVoiceV2_git/start_and_stop_server.sh
+RUN chmod +x /app/OpenVoiceV2_git/start_and_stop_server.sh
+RUN /app/OpenVoiceV2_git/start_and_stop_server.sh
+
+# Run the startup script which installs libmagic and starts the server, when the container launches
+CMD ["bash", "/app/OpenVoiceV2_git/start.sh"]
