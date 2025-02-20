@@ -38,23 +38,23 @@ RUN apt-get update && apt-get install -y unzip wget
 RUN wget https://myshell-public-repo-host.s3.amazonaws.com/openvoice/checkpoints_v2_0417.zip
 RUN unzip checkpoints_v2_0417.zip -d ./openvoice
 RUN rm checkpoints_v2_0417.zip
-RUN mv resources openvoice/resources
+# RUN mv resources openvoice/resources
 
 # Make port 8000 available to the world outside this container
 EXPOSE 8000
 EXPOSE 7860
 
-RUN cd /app/OpenVoice_server/openvoice
-WORKDIR /app/OpenVoice_server/openvoice
+RUN cd /app/OpenVoiceV2_git/openvoice
+WORKDIR /app/OpenVoiceV2_git/openvoice
 
 RUN conda install ffmpeg
 RUN conda install --yes libmagic
 
 # copy the startup script into the container
-COPY start.sh /app/OpenVoice_server/openvoice/start.sh
+COPY start.sh /app/OpenVoiceV2_git/openvoice/start.sh
 
 # Provide permissions to execute the script
-RUN chmod +x /app/OpenVoice_server/openvoice/start.sh
+RUN chmod +x /app/OpenVoiceV2_git/openvoice/start.sh
 
 # Start the server once to initiate the first time setup that downloads some models.
 COPY start_and_stop_server.sh /app/OpenVoiceV2_git/start_and_stop_server.sh
