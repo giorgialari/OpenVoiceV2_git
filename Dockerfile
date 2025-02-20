@@ -48,7 +48,8 @@ RUN cd /app/OpenVoiceV2_git/openvoice
 WORKDIR /app/OpenVoiceV2_git/openvoice
 
 RUN conda install ffmpeg
-RUN conda install --yes libmagic
+# RUN conda install --yes libmagic
+RUN apt-get update && apt-get install -y libmagic1
 
 # copy the startup script into the container
 COPY start.sh /app/OpenVoiceV2_git/openvoice/start.sh
