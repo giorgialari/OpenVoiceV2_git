@@ -28,7 +28,9 @@ RUN git clone https://github.com/myshell-ai/MeloTTS.git && \
   python -m unidic download && \
   cd ..
 
-RUN pip install -e . uvicorn ffmpeg
+RUN pip install -e .
+RUN pip install uvicorn ffmpeg
+  
 RUN pip install -r requirements.txt
 
 # Download and extract the checkpoint file
