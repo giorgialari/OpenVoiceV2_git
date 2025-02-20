@@ -37,7 +37,7 @@ To start the server, run the following command:
 
 ```bash
 cd openvoice
-uvicorn openvoice_server:app --host 0.0.0.0 --port 8000
+uvicorn openvoice.openvoice_server:app --host 0.0.0.0 --port 8000
 ```
 
 The server provides the following endpoints:
